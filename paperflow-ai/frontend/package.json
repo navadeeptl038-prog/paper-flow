@@ -13,11 +13,11 @@
 		"test:health": "node ./scripts/check-health.mjs"
 	},
 	"dependencies": {
+		"@supabase/supabase-js": "^2.116.0",
 		"@vitejs/plugin-react": "latest",
-		"vite": "latest",
+		"lucide-react": "latest",
 		"react": "latest",
 		"react-dom": "latest",
-		"lucide-react": "latest"
-	},
-	"devDependencies": {}
+		"vite": "latest"
+	}
 }

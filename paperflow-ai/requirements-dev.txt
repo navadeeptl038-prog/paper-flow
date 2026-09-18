@@ -1,0 +1,2 @@
+# Dev / test dependencies for PaperFlow AI (not required at runtime on Render)
+pytest>=8.0,<9.0
