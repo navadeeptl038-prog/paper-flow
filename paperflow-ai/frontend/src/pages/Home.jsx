@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import PromptBar from '../components/PromptBar'
 import WelcomeMessage from '../components/WelcomeMessage'
 import ExampleCards from '../components/ExampleCards'
@@ -10,7 +10,105 @@ export default function Home({ onNavigate }) {
 	const [query, setQuery] = useState('')
 	const [loading, setLoading] = useState(false)
 	const [healthState, setHealthState] = useState({ status: 'idle', message: '' })
-	const ask = ({ text }) => { setQuery(text); setLoading(true); setTimeout(() => { setLoading(false); onNavigate('chat') }, 900) }
-	const checkBackend = async () => { setHealthState({ status: 'loading', message: 'Checking backend...' }); try { const result = await healthCheck(); setHealthState({ status: 'success', message: `Backend connected: ${result.status}` }) } catch (error) { setHealthState({ status: 'error', message: error.message }) } }
-	return <div className="home-page"><div className="home-decorations" aria-hidden="true"><span className="decor-tile decor-pdf"><FileText size={25} /></span><span className="decor-tile decor-doc"><FileText size={24} /></span><span className="decor-tile decor-image"><Image size={24} /></span><span className="decor-tile decor-sheet"><Table2 size={24} /></span><span className="decor-tile decor-folder"><FolderOpen size={24} /></span></div><div className="home-intro"><WelcomeMessage /><div className="prompt-stage"><PromptBar onSubmit={ask} loading={loading} /><span className="prompt-caption">Private by design. Your sources stay yours.</span></div>{loading && <LoadingMessage />}</div><div className="example-section"><div className="section-heading"><span>Start with a question</span><span className="section-rule" /></div><ExampleCards onSelect={(text) => { setQuery(text); ask({ text }) }} /></div><div className="backend-check"><button className="button quiet" onClick={checkBackend} disabled={healthState.status === 'loading'}>{healthState.status === 'loading' ? 'Checking...' : 'Check backend'}</button>{healthState.message && <span className={`health-message ${healthState.status}`}>{healthState.message}</span>}</div><div className="home-footer"><span>PaperFlow AI</span><span>Search less. Live more.</span></div></div>
+
+	const ask = ({ text }) => {
+		setQuery(text)
+		setLoading(true)
+		setTimeout(() => {
+			setLoading(false)
+			onNavigate('chat')
+		}, 900)
+	}
+
+	const checkBackend = async () => {
+		setHealthState({ status: 'loading', message: 'Checking backend...' })
+		try {
+			const result = await healthCheck()
+			const status = result?.status ?? 'unknown'
+			setHealthState({
+				status: 'success',
+				message: `Backend connected: ${status}`,
+			})
+		} catch (error) {
+			setHealthState({
+				status: 'error',
+				message: error?.message || 'Backend health check failed',
+			})
+		}
+	}
+
+	// Small development-only connection check (does not invent auth or search).
+	useEffect(() => {
+		if (!import.meta.env.DEV) return undefined
+		let cancelled = false
+		healthCheck()
+			.then((result) => {
+				if (!cancelled) {
+					setHealthState({
+						status: 'success',
+						message: `Backend connected: ${result?.status ?? 'ok'}`,
+					})
+				}
+			})
+			.catch((error) => {
+				if (!cancelled) {
+					setHealthState({
+						status: 'error',
+						message: error?.message || 'Backend unreachable',
+					})
+				}
+			})
+		return () => {
+			cancelled = true
+		}
+	}, [])
+
+	return (
+		<div className="home-page">
+			<div className="home-decorations" aria-hidden="true">
+				<span className="decor-tile decor-pdf"><FileText size={25} /></span>
+				<span className="decor-tile decor-doc"><FileText size={24} /></span>
+				<span className="decor-tile decor-image"><Image size={24} /></span>
+				<span className="decor-tile decor-sheet"><Table2 size={24} /></span>
+				<span className="decor-tile decor-folder"><FolderOpen size={24} /></span>
+			</div>
+			<div className="home-intro">
+				<WelcomeMessage />
+				<div className="prompt-stage">
+					<PromptBar onSubmit={ask} loading={loading} />
+					<span className="prompt-caption">Private by design. Your sources stay yours.</span>
+				</div>
+				{loading && <LoadingMessage />}
+			</div>
+			<div className="example-section">
+				<div className="section-heading">
+					<span>Start with a question</span>
+					<span className="section-rule" />
+				</div>
+				<ExampleCards
+					onSelect={(text) => {
+						setQuery(text)
+						ask({ text })
+					}}
+				/>
+			</div>
+			<div className="backend-check">
+				<button
+					type="button"
+					className="button quiet"
+					onClick={checkBackend}
+					disabled={healthState.status === 'loading'}
+				>
+					{healthState.status === 'loading' ? 'Checking...' : 'Check backend'}
+				</button>
+				{healthState.message && (
+					<span className={`health-message ${healthState.status}`}>{healthState.message}</span>
+				)}
+			</div>
+			<div className="home-footer">
+				<span>PaperFlow AI</span>
+				<span>Search less. Live more.</span>
+			</div>
+		</div>
+	)
 }
