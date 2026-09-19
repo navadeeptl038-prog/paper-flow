@@ -43,7 +43,8 @@ DO $$ BEGIN
     ) THEN
         CREATE POLICY "Users can update their own documents"
             ON public.documents FOR UPDATE
-            USING (auth.uid() = owner_id);
+            USING (auth.uid() = owner_id)
+            WITH CHECK (auth.uid() = owner_id);
     END IF;
 
     IF NOT EXISTS (

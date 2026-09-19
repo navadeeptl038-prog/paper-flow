@@ -145,31 +145,26 @@ def validate_filename_security(filename: str) -> str:
             detail="Invalid filename: filename cannot be empty.",
         )
 
-    # 1. Decode URL-encoded characters (e.g. %2e%2e%2f)
     decoded = urllib.parse.unquote(filename.strip())
 
-    # 2. Check for null bytes and control characters
     if "\x00" in decoded or any(ord(c) < 32 for c in decoded):
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Invalid filename: control characters and null bytes are prohibited.",
         )
 
-    # 3. Path traversal patterns: strictly reject any traversal or separator characters
     if TRAVERSAL_PATTERN.search(decoded) or ".." in decoded or "/" in decoded or "\\" in decoded:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Invalid filename: path traversal sequences and directory separators are strictly prohibited.",
         )
 
-    # 4. Length check
     if len(decoded) > 255:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Invalid filename: filename exceeds maximum length of 255 characters.",
         )
 
-    # 5. Windows reserved device names
     name_root = os.path.splitext(decoded)[0].lower()
     if name_root in WINDOWS_RESERVED_NAMES:
         raise HTTPException(
@@ -185,4 +180,57 @@ def validate_filename_security(filename: str) -> str:
         )
 
     return clean_name
+
+
+def build_user_scoped_storage_path(user_id: str, filename: str, document_id: str | None = None) -> str:
+    """Build a user-owned storage path: <user_id>/<safe_filename-or-document-id>.
+
+    The path must never use a client-supplied user_id as a trust anchor; it must use
+    the authenticated identity already verified by FastAPI and Supabase JWT validation.
+    """
+    if not user_id or not user_id.strip():
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="User identity is missing.",
+        )
+
+    safe_name = validate_filename_security(filename)
+    suffix = document_id or safe_name
+    if suffix in {".", ".."}:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid storage path suffix.",
+        )
+    return f"{user_id.strip()}/{suffix}"
+
+
+def validate_user_scoped_storage_path(user_id: str, storage_path: str) -> str:
+    """Ensure the storage object is under the authenticated user's namespace."""
+    if not user_id or not user_id.strip():
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="User identity is missing.",
+        )
+
+    if not storage_path or not storage_path.strip():
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Storage path cannot be empty.",
+        )
+
+    clean_path = storage_path.strip().replace('\\', '/')
+    if clean_path.startswith('/') or clean_path.startswith('../'):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Storage path must be relative and user-scoped.",
+        )
+
+    first_segment = clean_path.split('/')[0]
+    if first_segment != user_id.strip():
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Storage path does not belong to the authenticated user.",
+        )
+
+    return clean_path
 

@@ -127,7 +127,7 @@ EXPLICIT_FILE_ACTION_PATTERNS = [
 
 # Direct document lookup queries (e.g. "Find my passport.", "Find my ATM card.")
 DOCUMENT_QUERY_PATTERNS = [
-    r"^(find|where\s+is|show|locate|get|give\s+me)\s+(my\s+|the\s+)?([a-zA-Z0-9_\s-]+?\b(passport|atm\s*card|credit\s*card|debit\s*card|aadhaar|pan\s*card|pan|license|id\s*card|resume|document|file))\s*[\.\?!]*$",
+    r"^(find|where\s+is|show|locate|get|give\s+me)\s+(my\s+|the\s+)?([a-zA-Z0-9_\s-]+?\b(passport|atm\s*card|credit\s*card|debit\s*card|aadhaar|pan\s*card|pan|license|id\s*card|resume|bank\s+statement|statement|api\s*key|key|document|file))\s*[\.\?!]*$",
     r"^(find|where\s+is|show|locate|get|give\s+me)\s+(my\s+|the\s+)?([a-zA-Z0-9_\s-]+\.(pdf|docx|png|jpg|jpeg|webp))\s*[\.\?!]*$",
 ]
 
@@ -136,7 +136,7 @@ PERSONAL_DOCUMENT_PATTERNS = [
     r"\b(aadhaar|aadhar|uidai|passport|atm\s*card|credit\s*card|debit\s*card|pan\s*card|pan|driving\s*license|driver'?s\s*license|voter\s*id)\b",
     r"\b(ssn|social\s+security|tax\s+return|w-?2|1099|itr|form\s+16)\b",
     r"\b(birth\s+certificate|marriage\s+certificate|degree\s+certificate|marksheet|diploma)\b",
-    r"\b(bank\s+statement|salary\s+slip|pay\s+slip|insurance\s+policy|mediclaim)\b",
+    r"\b(bank\s+statement|salary\s+slip|pay\s+slip|insurance\s+policy|mediclaim|api\s*key|secret\s*key)\b",
     r"\b(expiry\s+date|date\s+of\s+birth|dob|id\s+number|account\s+number)\b",
 ]
 

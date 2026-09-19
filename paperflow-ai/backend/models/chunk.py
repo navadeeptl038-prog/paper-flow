@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import uuid
 from typing import Any
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 
 class ChunkRecord(BaseModel):
@@ -20,6 +20,15 @@ class ChunkRecord(BaseModel):
     metadata: dict[str, Any] = Field(default_factory=dict)
     created_at: str | None = None
     updated_at: str | None = None
+
+    @field_validator("embedding")
+    @classmethod
+    def validate_embedding_dimension(cls, value: list[float] | None) -> list[float] | None:
+        if value is None:
+            return value
+        if len(value) != 384:
+            raise ValueError("Embedding must have exactly 384 dimensions.")
+        return value
 
 
 class SearchResult(BaseModel):

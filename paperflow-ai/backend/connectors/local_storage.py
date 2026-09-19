@@ -150,15 +150,19 @@ async def search_local_storage(
 
         if match_score >= similarity_threshold:
             # Generate view/download URLs
-            signed_url = None
+            view_url = f"/api/documents/{doc.id}/view"
+            download_url = f"/api/documents/{doc.id}/download"
             try:
-                signed_url = supabase_storage.create_signed_download_url(
+                signed_url = supabase_storage.create_signed_url(
                     storage_path=doc.storage_path,
-                    expires_in=3600,
+                    expires_in_seconds=3600,
                     token=token,
                 )
+                if signed_url:
+                    view_url = signed_url
+                    download_url = signed_url
             except Exception:
-                signed_url = f"/api/documents/{doc.id}/download"
+                pass
 
             results_by_doc[doc.id] = UnifiedSearchResultItem(
                 id=f"supabase_{doc.id}",
@@ -178,8 +182,8 @@ async def search_local_storage(
                     "provider": "supabase_storage",
                     "is_authorized": True,
                 },
-                view_url=signed_url or f"/api/documents/{doc.id}/view",
-                download_url=signed_url or f"/api/documents/{doc.id}/download",
+                view_url=view_url,
+                download_url=download_url,
             )
 
     # 3. Vector semantic search across chunks
@@ -209,9 +213,9 @@ async def search_local_storage(
             download_url = f"/api/documents/{doc_id}/download"
             if storage_path:
                 try:
-                    signed_url = supabase_storage.create_signed_download_url(
+                    signed_url = supabase_storage.create_signed_url(
                         storage_path=storage_path,
-                        expires_in=3600,
+                        expires_in_seconds=3600,
                         token=token,
                     )
                     if signed_url:

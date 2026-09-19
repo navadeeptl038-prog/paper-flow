@@ -586,7 +586,6 @@ async def embed_document_endpoint(
 
     chunks = document_service.get_document_chunks(document_id, user.user_id)
     if not chunks:
-        # Check database
         db_chunks = document_repository.get_document_chunks_by_doc(document_id, user.user_id, token)
         if db_chunks:
             return db_chunks

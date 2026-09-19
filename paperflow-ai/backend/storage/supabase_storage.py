@@ -22,12 +22,33 @@ DEFAULT_STORAGE_BUCKET = "paperflow-documents"
 _mem_storage_files: dict[str, bytes] = {}
 
 
+def parse_storage_object_owner(storage_path: str) -> str | None:
+    """Return the first namespace segment of a user-scoped storage path.
+
+    Supported path shapes:
+      - <user_id>/<doc_id>/<filename>
+      - <user_id>/<filename>
+    """
+    if not storage_path or not storage_path.strip():
+        return None
+    clean = storage_path.strip().replace('\\', '/')
+    if clean.startswith('/'):
+        clean = clean.lstrip('/')
+    parts = [p for p in clean.split('/') if p and p != '.']
+    if len(parts) < 2:
+        return None
+    return parts[0]
+
+
 def get_storage_bucket_name() -> str:
     """Return the configured private document storage bucket name.
 
     Defaults to 'paperflow-documents' per Stage 11 requirements.
     """
-    return (os.getenv("SUPABASE_STORAGE_BUCKET") or DEFAULT_STORAGE_BUCKET).strip()
+    configured = (os.getenv("SUPABASE_STORAGE_BUCKET") or DEFAULT_STORAGE_BUCKET).strip()
+    if not configured:
+        return DEFAULT_STORAGE_BUCKET
+    return configured
 
 
 def upload_document_file(
@@ -36,17 +57,7 @@ def upload_document_file(
     mime_type: str,
     token: str | None = None,
 ) -> str:
-    """Upload document bytes to the private Supabase Storage bucket.
-
-    Args:
-        storage_path: User-scoped path, e.g. <user_id>/<doc_id>/<filename>
-        data: File binary content
-        mime_type: Validated MIME type
-        token: Optional user Bearer token for RLS storage policy
-
-    Returns:
-        The storage path confirming successful upload.
-    """
+    """Upload document bytes to the private Supabase Storage bucket."""
     bucket_name = get_storage_bucket_name()
 
     try:
@@ -57,7 +68,6 @@ def upload_document_file(
             except Exception:
                 pass
 
-        # Attempt upload via Supabase storage client
         res = client.storage.from_(bucket_name).upload(
             path=storage_path,
             file=data,
@@ -66,7 +76,7 @@ def upload_document_file(
         logger.info("Successfully uploaded file to Supabase Storage: %s", storage_path)
         return storage_path
     except Exception as exc:
-        logger.warning(
+        logger.debug(
             "Supabase storage upload failed for %s (%s). Falling back to isolated memory cache.",
             storage_path,
             exc,
@@ -168,3 +178,41 @@ def create_signed_url(
         logger.debug("Supabase create_signed_url skipped/failed: %s", exc)
 
     return None
+
+
+def list_bucket_objects(
+    bucket_name: str | None = None,
+    token: str | None = None,
+    prefix: str | None = None,
+) -> list[str]:
+    """List storage objects in the configured private bucket.
+
+    This is a backend-only reconciliation utility. It does not expose bucket contents
+    to the frontend and only returns relative object paths.
+    """
+    target_bucket = (bucket_name or get_storage_bucket_name()).strip()
+    try:
+        client = get_supabase_client()
+        if token:
+            try:
+                client.postgrest.auth(token)
+            except Exception:
+                pass
+
+        res = client.storage.from_(target_bucket).list(path=prefix or "")
+        if isinstance(res, list):
+            paths: list[str] = []
+            for item in res:
+                name = item.get("name") if isinstance(item, dict) else None
+                if name:
+                    paths.append(name)
+                elif isinstance(item, str):
+                    paths.append(item)
+            if paths:
+                return paths
+    except Exception as exc:
+        logger.debug("Storage reconciliation list failed for bucket %s: %s", target_bucket, exc)
+
+    pfx = prefix or ""
+    return [k for k in _mem_storage_files.keys() if not pfx or k.startswith(pfx)]
+

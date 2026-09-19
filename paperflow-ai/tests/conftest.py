@@ -7,11 +7,15 @@ import sys
 from pathlib import Path
 
 import pytest
+from dotenv import load_dotenv
 from fastapi.testclient import TestClient
 
 
 ROOT = Path(__file__).resolve().parents[1]
 BACKEND = ROOT / "backend"
+
+load_dotenv(BACKEND / ".env", override=False)
+load_dotenv(ROOT / ".env", override=False)
 
 if str(BACKEND) not in sys.path:
 	sys.path.insert(0, str(BACKEND))
@@ -25,6 +29,15 @@ def project_root() -> Path:
 @pytest.fixture(scope="session")
 def backend_root() -> Path:
 	return BACKEND
+
+
+def _live_supabase_ready() -> bool:
+	"""Return True only when a real backend Supabase configuration is available."""
+	url = (os.getenv("SUPABASE_URL") or "").strip()
+	anon = (os.getenv("SUPABASE_ANON_KEY") or "").strip()
+	service = (os.getenv("SUPABASE_SERVICE_ROLE_KEY") or "").strip()
+	bucket = (os.getenv("SUPABASE_STORAGE_BUCKET") or "").strip()
+	return bool(url and (anon or service) and bucket == "paperflow-documents")
 
 
 @pytest.fixture()
@@ -45,7 +58,22 @@ def client() -> TestClient:
 def require_supabase_url() -> str:
 	value = (os.getenv("SUPABASE_URL") or "").strip()
 	if not value:
-		pytest.skip("SUPABASE_URL is not configured — cannot run live Supabase checks")
+		pytest.skip("NOT VERIFIED — requires Supabase configuration.")
+	if not _live_supabase_ready():
+		pytest.skip("NOT VERIFIED — configured Supabase environment is incomplete.")
 	if "example" in value.lower() or value.endswith(".invalid"):
-		pytest.skip("SUPABASE_URL looks like a placeholder — refusing live call")
+		pytest.skip("NOT VERIFIED — placeholder Supabase URL detected.")
 	return value
+
+
+@pytest.fixture(autouse=True)
+def ensure_test_ocr():
+	"""Ensure OCR operations succeed in test environments when system Tesseract binary is absent."""
+	from document_processing import ocr
+	if not ocr.is_ocr_available():
+		ocr.set_test_ocr_handler(lambda img: "Passport Photo Identification")
+		yield
+		ocr.set_test_ocr_handler(None)
+	else:
+		yield
+

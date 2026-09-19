@@ -89,7 +89,10 @@ export default function Signup({ onNavigate }) {
 	async function handleGoogle() {
 		setError('')
 		try {
-			await authService.loginWithGoogle()
+			const redirectTo = window.location.origin && window.location.origin !== 'about:blank'
+				? window.location.origin
+				: 'http://localhost:5173'
+			await authService.loginWithGoogle({ redirectTo })
 		} catch (err) {
 			setError(err instanceof AuthError ? err.message : 'Google sign-in failed. Please try again.')
 		}

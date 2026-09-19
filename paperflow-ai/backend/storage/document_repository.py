@@ -81,7 +81,7 @@ def save_document(
                 updated_at=r["updated_at"],
             )
     except Exception as exc:
-        logger.warning(
+        logger.debug(
             "Database insert failed for document %s (%s). Using isolated memory store.",
             document_uuid,
             exc,
@@ -92,6 +92,51 @@ def save_document(
     _mem_documents[owner_id][document_uuid] = row_data
 
     return DocumentResponse(**row_data)
+
+
+def get_document_by_storage_path(
+    storage_path: str,
+    owner_id: str,
+    token: str | None = None,
+) -> DocumentResponse | None:
+    """Retrieve the document row for a user-owned storage object, if one already exists."""
+    try:
+        client = get_supabase_client()
+        if token:
+            try:
+                client.postgrest.auth(token)
+            except Exception:
+                pass
+        res = (
+            client.table("documents")
+            .select("*")
+            .eq("storage_path", storage_path)
+            .eq("owner_id", owner_id)
+            .limit(1)
+            .execute()
+        )
+        if res.data:
+            r = res.data[0]
+            return DocumentResponse(
+                id=str(r["id"]),
+                owner_id=str(r["owner_id"]),
+                original_filename=r["original_filename"],
+                storage_path=r["storage_path"],
+                file_type=r["file_type"],
+                processing_status=r.get("processing_status") or "uploaded",
+                source=r.get("source") or "local_upload",
+                metadata=r.get("metadata") or {},
+                created_at=r["created_at"],
+                updated_at=r["updated_at"],
+            )
+    except Exception:
+        pass
+
+    user_docs = _mem_documents.get(owner_id, {})
+    for doc_dict in user_docs.values():
+        if str(doc_dict.get("storage_path")) == storage_path:
+            return DocumentResponse(**doc_dict)
+    return None
 
 
 def get_document_by_id(
@@ -287,7 +332,9 @@ def save_document_chunks(
     now_iso = datetime.datetime.now(datetime.timezone.utc).isoformat()
     rows = []
     for c in chunks:
-        # Neutralize prompt injection attempts embedded within document text
+        if c.embedding is None or len(c.embedding) != 384:
+            raise ValueError("Chunk embeddings must be present and exactly 384 dimensions.")
+
         sanitized_content = security.sanitize_document_text_for_llm(c.content)
         c.content = sanitized_content
         row = {
@@ -380,6 +427,9 @@ def search_vector_chunks(
 
     User isolation is enforced at both SQL function and fallback levels.
     """
+    if not query_embedding or len(query_embedding) != 384:
+        raise ValueError("Query embeddings must be exactly 384 dimensions.")
+
     # 1. Attempt pgvector RPC search in Supabase
     try:
         client = get_supabase_client()

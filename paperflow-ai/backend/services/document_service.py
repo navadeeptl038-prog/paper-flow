@@ -36,11 +36,12 @@ from document_processing.pdf_extractor import (
     PDFExtractionError,
     extract_pdf_text,
 )
-from models.document import DocumentResponse
+from models.document import DocumentCreate, DocumentResponse
 from services.supabase_client import get_supabase_client
 from storage import document_repository, supabase_storage
 from storage.document_repository import _mem_documents
 from utils.file_utils import sanitize_filename
+from utils.validators import validate_file_extension, validate_file_size, validate_filename_security, validate_mime_type
 
 logger = logging.getLogger("paperflow.document_service")
 
@@ -151,6 +152,68 @@ def process_document_bytes(
             return process_image(file_bytes, filename=filename)
         else:
             raise ValueError(f"Unsupported document type: {file_type} ({filename})")
+
+
+async def reconcile_storage_object(
+    storage_path: str,
+    owner_id: str,
+    token: str | None = None,
+) -> DocumentResponse:
+    """Create a document row for a new private Storage object and process it.
+
+    Safe path parser and validation ensure that the owner is derived from the path
+    rather than any client-controlled value.
+    """
+    from storage.supabase_storage import parse_storage_object_owner
+
+    path_owner = parse_storage_object_owner(storage_path)
+    if not path_owner:
+        raise ValueError("Storage path does not contain a valid user-scoped owner segment.")
+    if path_owner != owner_id:
+        raise PermissionError("Storage path owner does not match the authenticated user.")
+
+    filename = storage_path.split('/')[-1]
+    validate_filename_security(filename)
+    ext = validate_file_extension(filename)
+    validate_mime_type("application/octet-stream")
+
+    existing = document_repository.get_document_by_storage_path(storage_path, owner_id, token)
+    if existing:
+        return existing
+
+    file_bytes = supabase_storage.get_document_file(storage_path, token=token)
+    if file_bytes is None:
+        raise FileNotFoundError(f"Storage object {storage_path} could not be retrieved.")
+    validate_file_size(len(file_bytes))
+
+    doc_id = str(__import__('uuid').uuid4())
+    doc_create = DocumentCreate(
+        original_filename=filename,
+        storage_path=storage_path,
+        file_type="image" if ext in {'.jpg', '.jpeg', '.png', '.webp', '.heic', '.heif'} else ('pdf' if ext == '.pdf' else 'docx'),
+        file_size_bytes=len(file_bytes),
+        metadata={
+            "file_size_bytes": len(file_bytes),
+            "mime_type": "application/octet-stream",
+            "extension": ext,
+            "source": "supabase_storage_reconciliation",
+        },
+    )
+    saved_doc = document_repository.save_document(
+        doc=doc_create,
+        owner_id=owner_id,
+        doc_id=doc_id,
+        token=token,
+    )
+
+    updated = _update_document_record(
+        doc_id=saved_doc.id,
+        owner_id=owner_id,
+        status="pending",
+        metadata={"reconciled_from_storage": True, **saved_doc.metadata},
+        token=token,
+    )
+    return await process_document(saved_doc.id, owner_id, token=token)
 
 
 async def process_document(

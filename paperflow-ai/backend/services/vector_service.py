@@ -39,11 +39,10 @@ async def embed_and_store_chunks(
     if not chunks:
         return []
 
-    # 1. Extract texts
     texts = [getattr(c, "content", "") for c in chunks]
 
-    # 2. Generate embeddings in batch (using cache to avoid unnecessary re-embedding)
-    embeddings = embedding_service.generate_embeddings_batch(texts)
+    # Use the canonical embedding API defined by the service instead of ad-hoc direct calls.
+    embeddings = await embedding_service.get_document_embeddings(texts)
 
     # 3. Assemble chunk records
     chunk_records: list[ChunkRecord] = []

@@ -88,49 +88,36 @@ def _deterministic_fallback_embedding(text: str) -> list[float]:
 def generate_embedding(text: str) -> list[float]:
     """Generate a 384-dimensional vector embedding for a single text chunk.
 
-    Args:
-        text: Chunk or query string to embed.
-
-    Returns:
-        List of 384 float values.
-
-    Raises:
-        ValueError: If text is empty.
+    Uses the configured SentenceTransformer model and raises on failure rather than
+    silently manufacturing fake vectors.
     """
     clean_text = text.strip()
     if not clean_text:
         raise ValueError("Cannot generate embedding for empty text.")
 
-    # 1. Check custom test generator
     if _test_embedding_generator is not None:
         vec = _test_embedding_generator(clean_text)
         if len(vec) != EMBEDDING_DIMENSION:
             raise ValueError(f"Custom embedding generator returned dimension {len(vec)}, expected {EMBEDDING_DIMENSION}")
         return vec
 
-    # 2. Check in-memory cache to avoid unnecessary re-embedding
     cache_key = _hash_text(clean_text)
     with _cache_lock:
         if cache_key in _embedding_cache:
             return _embedding_cache[cache_key]
 
-    # 3. Generate using SentenceTransformer model
     try:
         model = _get_model()
-        # normalize_embeddings=True ensures cosine similarity can be computed via dot product
         raw_embedding = model.encode(clean_text, normalize_embeddings=True)
         vector = [float(x) for x in raw_embedding]
     except Exception as exc:
-        logger.warning("SentenceTransformer failed to encode text (%s). Using fallback generator.", exc)
-        vector = _deterministic_fallback_embedding(clean_text)
+        raise RuntimeError(f"Embedding generation failed for text: {exc}") from exc
 
-    # Validate dimension
     if len(vector) != EMBEDDING_DIMENSION:
         raise ValueError(
             f"Generated embedding dimension {len(vector)} does not match expected {EMBEDDING_DIMENSION}."
         )
 
-    # 4. Cache result
     with _cache_lock:
         _embedding_cache[cache_key] = vector
 
@@ -140,55 +127,62 @@ def generate_embedding(text: str) -> list[float]:
 def generate_embeddings_batch(texts: list[str]) -> list[list[float]]:
     """Batch-generate 384-d vector embeddings, reusing cached vectors whenever possible.
 
-    Args:
-        texts: List of text strings.
-
-    Returns:
-        List of 384-d float vectors corresponding 1-to-1 with input texts.
+    Empty strings are rejected instead of converted into fake vectors.
     """
     if not texts:
         return []
 
-    results: list[list[float] | None] = [None] * len(texts)
+    normalized = []
+    for text in texts:
+        clean = (text or "").strip()
+        if not clean:
+            raise ValueError("Cannot generate embedding for empty text.")
+        normalized.append(clean)
+
+    results: list[list[float] | None] = [None] * len(normalized)
     uncached_indices: list[int] = []
     uncached_texts: list[str] = []
 
-    # 1. Resolve cached texts
-    for idx, text in enumerate(texts):
-        clean = text.strip()
-        if not clean:
-            results[idx] = [0.0] * EMBEDDING_DIMENSION
-            continue
-
+    for idx, text in enumerate(normalized):
         if _test_embedding_generator is not None:
-            results[idx] = _test_embedding_generator(clean)
+            results[idx] = _test_embedding_generator(text)
             continue
 
-        key = _hash_text(clean)
+        key = _hash_text(text)
         with _cache_lock:
             cached = _embedding_cache.get(key)
         if cached is not None:
             results[idx] = cached
         else:
             uncached_indices.append(idx)
-            uncached_texts.append(clean)
+            uncached_texts.append(text)
 
-    # 2. Compute missing embeddings in a single batch
     if uncached_texts:
         try:
             model = _get_model()
             batch_vectors = model.encode(uncached_texts, normalize_embeddings=True)
             for i, raw_vec in enumerate(batch_vectors):
                 vec = [float(x) for x in raw_vec]
+                if len(vec) != EMBEDDING_DIMENSION:
+                    raise ValueError(
+                        f"Generated embedding dimension {len(vec)} does not match expected {EMBEDDING_DIMENSION}."
+                    )
                 orig_idx = uncached_indices[i]
                 results[orig_idx] = vec
                 key = _hash_text(uncached_texts[i])
                 with _cache_lock:
                     _embedding_cache[key] = vec
         except Exception as exc:
-            logger.warning("Batch encoding failed (%s). Falling back to item-by-item encoding.", exc)
-            for i, uncached_text in enumerate(uncached_texts):
-                orig_idx = uncached_indices[i]
-                results[orig_idx] = generate_embedding(uncached_text)
+            raise RuntimeError(f"Batch embedding generation failed: {exc}") from exc
 
-    return [r if r is not None else [0.0] * EMBEDDING_DIMENSION for r in results]
+    final: list[list[float]] = []
+    for item in results:
+        if item is None:
+            raise RuntimeError("Embedding generation produced an incomplete result set.")
+        final.append(item)
+    return final
+
+
+async def get_document_embeddings(texts: list[str]) -> list[list[float]]:
+    """Consistent public embedding API for document chunks and queries."""
+    return generate_embeddings_batch(texts)

@@ -6,8 +6,16 @@ and presenting checklists with Present/Missing status.
 
 from __future__ import annotations
 
+from enum import Enum
 from typing import Any, Literal
 from pydantic import BaseModel, Field
+
+
+class RequirementStatus(str, Enum):
+    """Fulfillment state of a document requirement."""
+
+    PRESENT = "present"
+    MISSING = "missing"
 
 
 class MatchedDocumentInfo(BaseModel):
@@ -26,7 +34,7 @@ class RequirementItem(BaseModel):
     """An individual required document item and its fulfillment state."""
 
     name: str
-    status: Literal["present", "missing"] = "missing"
+    status: RequirementStatus = RequirementStatus.MISSING
     matched_document: MatchedDocumentInfo | None = None
     duplicates: list[MatchedDocumentInfo] = Field(default_factory=list)
     description: str = ""

@@ -31,6 +31,7 @@ DO $$ BEGIN
         ON storage.objects FOR INSERT TO authenticated
         WITH CHECK (
             bucket_id = 'paperflow-documents' AND
+            array_length(storage.foldername(name), 1) >= 1 AND
             (storage.foldername(name))[1] = auth.uid()::text
         );
     END IF;
@@ -42,6 +43,7 @@ DO $$ BEGIN
         ON storage.objects FOR SELECT TO authenticated
         USING (
             bucket_id = 'paperflow-documents' AND
+            array_length(storage.foldername(name), 1) >= 1 AND
             (storage.foldername(name))[1] = auth.uid()::text
         );
     END IF;
@@ -53,6 +55,7 @@ DO $$ BEGIN
         ON storage.objects FOR DELETE TO authenticated
         USING (
             bucket_id = 'paperflow-documents' AND
+            array_length(storage.foldername(name), 1) >= 1 AND
             (storage.foldername(name))[1] = auth.uid()::text
         );
     END IF;

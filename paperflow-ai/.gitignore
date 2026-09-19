@@ -6,6 +6,8 @@
 !**/.env.example
 frontend/.env
 backend/.env
+# Keep backend service-role credentials out of version control and never expose them
+# in frontend or browser bundles.
 
 # Credentials and keys
 *.pem

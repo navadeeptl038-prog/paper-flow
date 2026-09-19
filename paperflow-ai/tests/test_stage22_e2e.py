@@ -59,6 +59,19 @@ USER_1 = AuthenticatedUser(user_id=USER_1_ID, email="user1@example.com", role="a
 USER_2 = AuthenticatedUser(user_id=USER_2_ID, email="user2@example.com", role="authenticated")
 
 
+@pytest.fixture(autouse=True)
+def ensure_test_ocr():
+    """Ensure OCR operations succeed in test environments when system Tesseract binary is absent."""
+    from document_processing import ocr
+    if not ocr.is_ocr_available():
+        ocr.set_test_ocr_handler(lambda img: "Passport Photo Identification")
+        yield
+        ocr.set_test_ocr_handler(None)
+    else:
+        yield
+
+
+
 def _make_dummy_pdf() -> bytes:
     """Generate a minimal valid PDF byte sequence."""
     return (
@@ -72,12 +85,12 @@ def _make_dummy_pdf() -> bytes:
 
 
 def _make_dummy_png() -> bytes:
-    """Generate a minimal 1x1 PNG byte sequence."""
-    return (
-        b"\x89PNG\r\n\x1a\n\x00\x00\x00\rIHDR\x00\x00\x00\x01\x00\x00\x00\x01\x08\x06"
-        b"\x00\x00\x00\x1f\x15c4\x00\x00\x00\rIDATx\x9cc`\x00\x00\x00\x02\x00\x01"
-        b"\xe5'\xde\xfc\x00\x00\x00\x00IEND\xaeB`\x82"
-    )
+    """Generate a minimal valid 1x1 PNG byte sequence."""
+    from PIL import Image
+    img = Image.new("RGB", (1, 1), color="white")
+    buf = io.BytesIO()
+    img.save(buf, format="PNG")
+    return buf.getvalue()
 
 
 def _make_dummy_docx(text: str = "PaperFlow AI sample document text content.") -> bytes:

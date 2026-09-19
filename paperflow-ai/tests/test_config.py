@@ -85,7 +85,32 @@ def test_cors_origins_default_when_unset(monkeypatch: pytest.MonkeyPatch) -> Non
 	monkeypatch.delenv("FRONTEND_URL", raising=False)
 	from main import _configured_origins
 
-	assert _configured_origins() == ["http://localhost:5173"]
+	assert _configured_origins() == [
+		"http://localhost:5173",
+		"http://127.0.0.1:5173",
+	]
+
+
+def test_cors_origins_accepts_loopback_aliases_when_using_default_host(monkeypatch: pytest.MonkeyPatch) -> None:
+	monkeypatch.delenv("CORS_ORIGINS", raising=False)
+	monkeypatch.setenv("FRONTEND_URL", "http://localhost:5173")
+	from main import _configured_origins
+
+	assert _configured_origins() == [
+		"http://localhost:5173",
+		"http://127.0.0.1:5173",
+	]
+
+
+def test_cors_origins_accepts_loopback_aliases_for_vite_port_fallback(monkeypatch: pytest.MonkeyPatch) -> None:
+	monkeypatch.delenv("CORS_ORIGINS", raising=False)
+	monkeypatch.setenv("FRONTEND_URL", "http://127.0.0.1:5178")
+	from main import _configured_origins
+
+	assert _configured_origins() == [
+		"http://127.0.0.1:5178",
+		"http://localhost:5178",
+	]
 
 
 def test_openapi_documents_health_and_app_title(client) -> None:

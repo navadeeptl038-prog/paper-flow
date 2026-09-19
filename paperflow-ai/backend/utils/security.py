@@ -23,8 +23,9 @@ from typing import Any
 
 logger = logging.getLogger("paperflow.security")
 
-# Ephemeral runtime fallback secret if no environment secret is configured
-# Generated once per process startup so it cannot be predicted across instances
+# Ephemeral runtime fallback secret if no environment secret is configured.
+# This is intentionally process-local and must never be used as a substitute for
+# a real Supabase or app secret in production.
 _RUNTIME_SECRET = secrets.token_hex(32)
 
 # OAuth state expiration: 15 minutes
@@ -45,13 +46,14 @@ PROMPT_INJECTION_PATTERNS = [
 def get_application_secret() -> str:
     """Retrieve the application secret key for cryptographic operations.
 
-    Uses SUPABASE_JWT_SECRET, SUPABASE_SERVICE_ROLE_KEY, or SECRET_KEY.
-    Falls back to a secure random per-process secret — NEVER a hardcoded predictable string.
+    Uses SECRET_KEY or SUPABASE_JWT_SECRET when available, and falls back to a
+    per-process runtime secret. We do not treat service-role credentials as a
+    general-purpose app secret because they are backend-only and must never be
+    used casually in client-facing or signing logic.
     """
     configured = (
         os.getenv("SECRET_KEY")
         or os.getenv("SUPABASE_JWT_SECRET")
-        or os.getenv("SUPABASE_SERVICE_ROLE_KEY")
     )
     if configured and configured.strip():
         return configured.strip()

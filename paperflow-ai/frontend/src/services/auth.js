@@ -111,6 +111,17 @@ function normalise(error, fallback = 'An authentication error occurred.') {
 // Auth service
 // ---------------------------------------------------------------------------
 
+function resolveOAuthRedirect(redirectTo) {
+	if (redirectTo && redirectTo.trim()) {
+		return redirectTo.trim().replace(/\/$/, '') || 'http://localhost:5173'
+	}
+	const origin = typeof window !== 'undefined' ? (window.location.origin || '').trim() : ''
+	if (origin && origin !== 'null' && origin !== 'about:blank') {
+		return origin.replace(/\/$/, '')
+	}
+	return 'http://localhost:5173'
+}
+
 export const authService = {
 
 	// ── Sign up ──────────────────────────────────────────────────────────────
@@ -230,11 +241,14 @@ export const authService = {
 	 * @param {{ redirectTo?: string }} [options]
 	 */
 	async loginWithGoogle({ redirectTo } = {}) {
+		const resolvedRedirect = resolveOAuthRedirect(redirectTo)
 		const { error } = await supabase.auth.signInWithOAuth({
 			provider: 'google',
 			options: {
-				redirectTo: redirectTo ?? window.location.origin,
+				redirectTo: resolvedRedirect,
+				skipBrowserRedirect: false,
 				queryParams: { access_type: 'offline', prompt: 'select_account' },
+				flow: 'pkce',
 			},
 		})
 		if (error) throw normalise(error, 'Google sign-in could not be started. Please try again.')

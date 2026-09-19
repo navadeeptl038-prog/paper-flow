@@ -1,0 +1,3 @@
+-- Seed file intentionally left blank.
+-- Real users, documents, and project data must be created through Supabase Auth
+-- and the authenticated app flow. This repository does not ship fake production data.
